@@ -92,4 +92,10 @@ export class RedisAdapter implements ICacheAdapter {
 
     return this.client.zAdd(key, members)
   }
+
+  public async eval(script: string, keys: string[], args: string[]): Promise<unknown> {
+    await this.connection
+    debug('eval script with keys %o and args %o', keys, args)
+    return this.client.eval(script, { keys, arguments: args })
+  }
 }
