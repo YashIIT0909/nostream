@@ -96,6 +96,7 @@ export class RedisAdapter implements ICacheAdapter {
     return this.client.zAdd(key, members)
   }
 
+
   public async deleteKey(key: string): Promise<number> {
     await this.connection
     logger('delete %s key', key)
@@ -121,6 +122,13 @@ export class RedisAdapter implements ICacheAdapter {
       this.scriptShas.set(script, sha)
     }
     return await this.client.evalSha(this.scriptShas.get(script)!, { keys, arguments: args })
+  }
+
+
+  public async evalRaw(script: string, keys: string[], args: string[]): Promise<unknown> {
+    await this.connection
+    logger('eval script with keys %o and args %o', keys, args)
+    return this.client.eval(script, { keys, arguments: args })
   }
 
 }

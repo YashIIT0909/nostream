@@ -17,6 +17,7 @@ describe('SlidingWindowRateLimiter', () => {
   let getKeyStub: Sinon.SinonStub
   let hasKeyStub: Sinon.SinonStub
   let setKeyStub: Sinon.SinonStub
+  let evalStub: Sinon.SinonStub
 
   let sandbox: Sinon.SinonSandbox
 
@@ -30,6 +31,7 @@ describe('SlidingWindowRateLimiter', () => {
     getKeyStub = sandbox.stub()
     hasKeyStub = sandbox.stub()
     setKeyStub = sandbox.stub()
+    evalStub = sandbox.stub()
     cache = {
       removeRangeByScoreFromSortedSet: removeRangeByScoreFromSortedSetStub,
       addToSortedSet: addToSortedSetStub,
@@ -38,7 +40,10 @@ describe('SlidingWindowRateLimiter', () => {
       getKey: getKeyStub,
       hasKey: hasKeyStub,
       setKey: setKeyStub,
+      eval: evalStub,
     } as unknown as ICacheAdapter
+
+
     rateLimiter = new SlidingWindowRateLimiter(cache)
   })
 
@@ -48,8 +53,7 @@ describe('SlidingWindowRateLimiter', () => {
   })
 
   it('returns true if rate limited', async () => {
-    const now = Date.now()
-    getRangeFromSortedSetStub.resolves([`${now}:6`, `${now}:4`, `${now}:1`])
+    evalStub.resolves(1)
 
     const actualResult = await rateLimiter.hit('key', 1, { period: 60000, rate: 10 })
 
@@ -57,8 +61,7 @@ describe('SlidingWindowRateLimiter', () => {
   })
 
   it('returns false if not rate limited', async () => {
-    const now = Date.now()
-    getRangeFromSortedSetStub.resolves([`${now}:10`])
+    evalStub.resolves(0)
 
     const actualResult = await rateLimiter.hit('key', 1, { period: 60000, rate: 10 })
 
