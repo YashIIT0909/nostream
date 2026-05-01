@@ -1,23 +1,30 @@
-import Schema from 'joi'
+import { z } from 'zod'
 
-export const prefixSchema = Schema.string().case('lower').hex().min(4).max(64).label('prefix')
+import { GEOHASH_FILTER_PATTERN, GEOHASH_PATTERN } from '../utils/geohash'
 
-export const idSchema = Schema.string().case('lower').hex().length(64).label('id')
+const lowerHexRegex = /^[0-9a-f]+$/
 
-export const pubkeySchema = Schema.string().case('lower').hex().length(64).label('pubkey')
+// NIP-12 geohash schemas
+export const geohashSchema = z.string().regex(GEOHASH_PATTERN, 'Invalid geohash')
+export const geohashFilterValueSchema = z.string().regex(GEOHASH_FILTER_PATTERN, 'Invalid geohash filter')
 
-export const kindSchema = Schema.number().min(0).multiple(1).label('kind')
+export const prefixSchema = z.string().regex(lowerHexRegex).min(4).max(64)
 
-export const signatureSchema = Schema.string().case('lower').hex().length(128).label('sig')
+export const idSchema = z.string().regex(lowerHexRegex).length(64)
 
-export const subscriptionSchema = Schema.string().min(1).label('subscriptionId')
+export const pubkeySchema = z.string().regex(lowerHexRegex).length(64)
 
-const seconds = (value: any, helpers: any) => (Number.isSafeInteger(value) && Math.log10(value) < 10) ? value : helpers.error('any.invalid')
+export const kindSchema = z.number().int().min(0)
 
-export const createdAtSchema = Schema.number().min(0).multiple(1).custom(seconds)
+export const signatureSchema = z.string().regex(lowerHexRegex).length(128)
+
+export const subscriptionSchema = z.string().min(1)
+
+export const createdAtSchema = z
+  .number()
+  .int()
+  .min(0)
+  .refine((value) => Number.isSafeInteger(value) && Math.log10(value) < 10, { message: 'Invalid timestamp' })
 
 // [<string>, <string> 0..*]
-export const tagSchema = Schema.array()
-  .ordered(Schema.string().required().label('identifier'))
-  .items(Schema.string().allow('').label('value'))
-  .label('tag')
+export const tagSchema = z.tuple([z.string().min(1)]).rest(z.string())

@@ -1,48 +1,62 @@
+import { timingSafeEqual } from 'crypto'
+
 import { always, applySpec, ifElse, is, path, prop, propEq, propSatisfies } from 'ramda'
 import { Request, Response } from 'express'
 
 import { Invoice, InvoiceStatus } from '../../@types/invoice'
 import { createLogger } from '../../factories/logger-factory'
-import { createSettings } from '../../factories/settings-factory'
 import { fromNodelessInvoice } from '../../utils/transform'
 import { hmacSha256 } from '../../utils/secret'
 import { IController } from '../../@types/controllers'
 import { IPaymentsService } from '../../@types/services'
+import { nodelessCallbackBodySchema, nodelessSignatureSchema } from '../../schemas/nodeless-callback-schema'
+import { validateSchema } from '../../utils/validation'
 
-const debug = createLogger('nodeless-callback-controller')
+const logger = createLogger('nodeless-callback-controller')
 
 export class NodelessCallbackController implements IController {
-  public constructor(
-    private readonly paymentsService: IPaymentsService,
-  ) {}
+  public constructor(private readonly paymentsService: IPaymentsService) {}
 
-  // TODO: Validate
-  public async handleRequest(
-    request: Request,
-    response: Response,
-  ) {
-    debug('callback request headers: %o', request.headers)
-    debug('callback request body: %O', request.body)
+  public async handleRequest(request: Request, response: Response) {
+    logger('callback request headers: %o', request.headers)
+    logger('callback request body: %O', request.body)
 
-    const settings = createSettings()
-    const paymentProcessor = settings.payments?.processor
-
-    const expected = hmacSha256(process.env.NODELESS_WEBHOOK_SECRET, (request as any).rawBody).toString('hex')
-    const actual = request.headers['nodeless-signature']
-
-    if (expected !== actual) {
-      console.error('nodeless callback request rejected: signature mismatch:', { expected, actual })
+    const bodyValidation = validateSchema(nodelessCallbackBodySchema)(request.body)
+    if (bodyValidation.error) {
+      logger('nodeless callback request rejected: invalid body %o', bodyValidation.error)
       response
-        .status(403)
-        .send('Forbidden')
+        .status(400)
+        .setHeader('content-type', 'application/json; charset=utf8')
+        .send('{"status":"error","message":"Malformed body"}')
       return
     }
 
-    if (paymentProcessor !== 'nodeless') {
-      debug('denied request from %s to /callbacks/nodeless which is not the current payment processor')
+    const webhookSecret = process.env.NODELESS_WEBHOOK_SECRET
+    if (!webhookSecret) {
+      logger.error('NODELESS_WEBHOOK_SECRET is not configured; unable to verify Nodeless callback')
       response
-        .status(403)
-        .send('Forbidden')
+        .status(500)
+        .setHeader('content-type', 'application/json; charset=utf8')
+        .send('{"status":"error","message":"Internal Server Error"}')
+      return
+    }
+
+    const signatureValidation = validateSchema(nodelessSignatureSchema)(request.headers['nodeless-signature'])
+    if (signatureValidation.error) {
+      logger('nodeless callback request rejected: invalid signature format')
+      response
+        .status(400)
+        .setHeader('content-type', 'application/json; charset=utf8')
+        .send('{"status":"error","message":"Invalid signature"}')
+      return
+    }
+
+    const expectedBuf = hmacSha256(webhookSecret, (request as any).rawBody)
+    const actualBuf = Buffer.from(signatureValidation.value, 'hex')
+
+    if (!timingSafeEqual(expectedBuf, actualBuf)) {
+      logger('nodeless callback request rejected: signature mismatch')
+      response.status(403).send('Forbidden')
       return
     }
 
@@ -51,41 +65,28 @@ export class NodelessCallbackController implements IController {
       status: prop('status'),
       satsAmount: prop('amount'),
       metadata: prop('metadata'),
-      paidAt: ifElse(
-        propEq('status', 'paid'),
-        always(new Date().toISOString()),
-        always(null),
-      ),
-      createdAt: ifElse(
-        propSatisfies(is(String), 'createdAt'),
-        prop('createdAt'),
-        path(['metadata', 'createdAt']),
-      ),
+      paidAt: ifElse(propEq('status', 'paid'), always(new Date().toISOString()), always(null)),
+      createdAt: ifElse(propSatisfies(is(String), 'createdAt'), prop('createdAt'), path(['metadata', 'createdAt'])),
     })(request.body)
 
-    debug('nodeless invoice: %O', nodelessInvoice)
+    logger('nodeless invoice: %O', nodelessInvoice)
 
     const invoice = fromNodelessInvoice(nodelessInvoice)
 
-    debug('invoice: %O', invoice)
+    logger('invoice: %O', invoice)
 
     let updatedInvoice: Invoice
     try {
       updatedInvoice = await this.paymentsService.updateInvoiceStatus(invoice)
-      debug('updated invoice: %O', updatedInvoice)
+      logger('updated invoice: %O', updatedInvoice)
     } catch (error) {
-      console.error(`Unable to persist invoice ${invoice.id}`, error)
+      logger.error(`Unable to persist invoice ${invoice.id}`, error)
 
       throw error
     }
 
-    if (
-      updatedInvoice.status !== InvoiceStatus.COMPLETED
-      && !updatedInvoice.confirmedAt
-    ) {
-      response
-        .status(200)
-        .send()
+    if (updatedInvoice.status !== InvoiceStatus.COMPLETED && !updatedInvoice.confirmedAt) {
+      response.status(200).send()
 
       return
     }
@@ -97,14 +98,11 @@ export class NodelessCallbackController implements IController {
       await this.paymentsService.confirmInvoice(invoice)
       await this.paymentsService.sendInvoiceUpdateNotification(updatedInvoice)
     } catch (error) {
-      console.error(`Unable to confirm invoice ${invoice.id}`, error)
+      logger.error(`Unable to confirm invoice ${invoice.id}`, error)
 
       throw error
     }
 
-    response
-      .status(200)
-      .setHeader('content-type', 'application/json; charset=utf8')
-      .send('{"status":"ok"}')
+    response.status(200).setHeader('content-type', 'application/json; charset=utf8').send('{"status":"ok"}')
   }
 }

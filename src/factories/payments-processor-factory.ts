@@ -2,16 +2,17 @@ import { createLNbitsPaymentProcessor } from './payments-processors/lnbits-payme
 import { createLnurlPaymentsProcessor } from './payments-processors/lnurl-payments-processor-factory'
 import { createLogger } from './logger-factory'
 import { createNodelessPaymentsProcessor } from './payments-processors/nodeless-payments-processor-factory'
+import { createNwcPaymentsProcessor } from './payments-processors/nwc-payments-processor-factory'
 import { createOpenNodePaymentsProcessor } from './payments-processors/opennode-payments-processor-factory'
 import { createSettings } from './settings-factory'
 import { createZebedeePaymentsProcessor } from './payments-processors/zebedee-payments-processor-factory'
 import { IPaymentsProcessor } from '../@types/clients'
 import { NullPaymentsProcessor } from '../payments-processors/null-payments-processor'
 
-const debug = createLogger('create-payments-processor')
+const logger = createLogger('create-payments-processor')
 
 export const createPaymentsProcessor = (): IPaymentsProcessor => {
-  debug('create payments processor')
+  logger('create payments processor')
 
   const settings = createSettings()
   if (!settings.payments?.enabled) {
@@ -29,6 +30,8 @@ export const createPaymentsProcessor = (): IPaymentsProcessor => {
       return createNodelessPaymentsProcessor(settings)
     case 'opennode':
       return createOpenNodePaymentsProcessor(settings)
+    case 'nwc':
+      return createNwcPaymentsProcessor(settings)
     default:
       return new NullPaymentsProcessor()
   }

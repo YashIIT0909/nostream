@@ -2,9 +2,8 @@ import { createGetAdmissionCheckController } from '../../factories/controllers/g
 import { Router } from 'express'
 import { withController } from '../../handlers/request-handlers/with-controller-request-handler'
 
-const admissionRouter = Router()
+const admissionRouter: Router = Router()
 
-admissionRouter
-  .get('/check/:pubkey', withController(createGetAdmissionCheckController))
+admissionRouter.get('/check/:pubkey', withController(createGetAdmissionCheckController))
 
 export default admissionRouter

@@ -14,7 +14,7 @@
   </head>
   <body lang="en">
     <main class="container">
-      <form method="post" action="/invoices">
+      <form method="post" action="{{path_prefix}}/invoices">
         <div class="row">
           <div class="col">
             <h1 class="mt-4 mb-4 text-center text-nowrap">{{name}}</h1>
@@ -74,7 +74,7 @@
         <div class="row pending d-none">
           <div class="col">
             <div class="d-flex justify-content-center mb-3">
-              <button id="sendPaymentBtn" class="btn btn-lg btn-warning d-none" type="submit">Pay with wallet</button>
+              <button id="sendPaymentBtn" class="btn btn-lg btn-warning d-none" type="button">Pay with wallet</button>
             </div>
           </div>
         </div>
@@ -88,7 +88,7 @@
         </div>
         <div class="row d-none" id="powered-by-zebedee">
           <div class="d-flex justify-content-center mb-3 mt-4">
-            <a href="https://zeb.gg/nostr-zbd-quickstart" target="_blank">
+            <a href="https://zeb.gg/nostr-zbd-quickstart" target="_blank" rel="noopener noreferrer">
               <img class="poweredbyzbd-img" src="https://cdn.zebedee.io/an/nostr/poweredbyzbd.png" />
             </a>
           </div>
@@ -106,6 +106,7 @@
       var reference = "{{reference}}"
       var relayUrl = "{{relay_url}}"
       var relayPubkey = "{{relay_pubkey}}"
+      var pathPrefix = {{path_prefix_json}};
       var invoice = "{{invoice}}";
       var pubkey = "{{pubkey}}"
       var expiresAt = "{{expires_at}}"
@@ -124,7 +125,7 @@
       }
 
       async function getInvoiceStatus() {
-        fetch(`/invoices/${reference}/status`).then(async (response) => {
+        fetch(`${pathPrefix}/invoices/${reference}/status`).then(async (response) => {
           const data = await response.json()
           console.log('data', data)
           const { status } = data;
@@ -152,7 +153,7 @@
         })
       }
 
-      fallbackTimeout = setTimeout(getInvoiceStatus, getBackoffTime)
+      fallbackTimeout = setTimeout(getInvoiceStatus, getBackoffTime())
 
       function connect() {
         var socket = new WebSocket(relayUrl)

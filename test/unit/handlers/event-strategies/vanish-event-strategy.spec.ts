@@ -1,20 +1,24 @@
-import chai from 'chai'
-import chaiAsPromised from 'chai-as-promised'
 import { Event } from '../../../../src/@types/event'
 import { EventKinds } from '../../../../src/constants/base'
 import { IWebSocketAdapter } from '../../../../src/@types/adapters'
 import { MessageType } from '../../../../src/@types/messages'
-import Sinon from 'sinon'
 import { VanishEventStrategy } from '../../../../src/handlers/event-strategies/vanish-event-strategy'
 import { WebSocketAdapterEvent } from '../../../../src/constants/adapter'
 
+import chai from 'chai'
+import chaiAsPromised from 'chai-as-promised'
+import Sinon from 'sinon'
+import sinonChai from 'sinon-chai'
+
 chai.use(chaiAsPromised)
+chai.use(sinonChai)
 
 const { expect } = chai
 
 describe('VanishEventStrategy', () => {
   let webSocket: IWebSocketAdapter
   let eventRepository: any
+  let userRepository: any
   let webSocketEmitStub: Sinon.SinonStub
   let strategy: VanishEventStrategy
   let sandbox: Sinon.SinonSandbox
@@ -22,7 +26,7 @@ describe('VanishEventStrategy', () => {
     id: 'id',
     pubkey: 'pubkey',
     kind: EventKinds.REQUEST_TO_VANISH,
-    tags: [[ 'r', 'relay_url' ]],
+    tags: [['r', 'relay_url']],
   } as any
 
   beforeEach(() => {
@@ -31,11 +35,14 @@ describe('VanishEventStrategy', () => {
       deleteByPubkeyExceptKinds: sandbox.stub().resolves(1),
       create: sandbox.stub().resolves(1),
     }
+    userRepository = {
+      setVanished: sandbox.stub().resolves(1),
+    }
     webSocketEmitStub = sandbox.stub()
     webSocket = {
       emit: webSocketEmitStub,
     } as any
-    strategy = new VanishEventStrategy(webSocket, eventRepository)
+    strategy = new VanishEventStrategy(webSocket, eventRepository, userRepository)
   })
 
   afterEach(() => {
@@ -45,15 +52,17 @@ describe('VanishEventStrategy', () => {
   it('deletes all events for pubkey except kind 62 events and creates the vanish event', async () => {
     await strategy.execute(event)
 
-    expect(eventRepository.deleteByPubkeyExceptKinds).to.have.been.calledOnceWithExactly(
-      event.pubkey,
-      [EventKinds.REQUEST_TO_VANISH],
-    )
+    expect(eventRepository.deleteByPubkeyExceptKinds).to.have.been.calledOnceWithExactly(event.pubkey, [
+      EventKinds.REQUEST_TO_VANISH,
+    ])
     expect(eventRepository.create).to.have.been.calledOnceWithExactly(event)
-    expect(webSocketEmitStub).to.have.been.calledOnceWithExactly(
-      WebSocketAdapterEvent.Message,
-      [MessageType.OK, event.id, true, ''],
-    )
+    expect(userRepository.setVanished).to.have.been.calledOnceWithExactly(event.pubkey, true)
+    expect(webSocketEmitStub).to.have.been.calledOnceWithExactly(WebSocketAdapterEvent.Message, [
+      MessageType.OK,
+      event.id,
+      true,
+      '',
+    ])
   })
 
   it('does not broadcast the vanish event', async () => {
@@ -67,9 +76,11 @@ describe('VanishEventStrategy', () => {
 
     await strategy.execute(event)
 
-    expect(webSocketEmitStub).to.have.been.calledOnceWithExactly(
-      WebSocketAdapterEvent.Message,
-      [MessageType.OK, event.id, true, 'duplicate:'],
-    )
+    expect(webSocketEmitStub).to.have.been.calledOnceWithExactly(WebSocketAdapterEvent.Message, [
+      MessageType.OK,
+      event.id,
+      true,
+      'duplicate:',
+    ])
   })
 })

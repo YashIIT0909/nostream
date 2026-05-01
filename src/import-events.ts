@@ -2,10 +2,7 @@ import { extname, resolve } from 'path'
 
 import fs from 'fs'
 
-import dotenv from 'dotenv'
-
-dotenv.config()
-
+import { CompressionFormat, createDecompressionStream, detectCompressionFormat } from './utils/compression'
 import {
   createEventBatchPersister,
   EventImportLineError,
@@ -21,6 +18,18 @@ interface CliOptions {
   showHelp: boolean
 }
 
+type ImportFileFormat = 'jsonl' | 'json'
+
+type RunImportOptions = {
+  json?: boolean
+}
+
+type InputFileSpec = {
+  absolutePath: string
+  compressionFormat?: CompressionFormat
+  format: ImportFileFormat
+}
+
 const DEFAULT_BATCH_SIZE = 1000
 const MAX_ERROR_LOGS = 20
 
@@ -31,8 +40,11 @@ const formatProgress = (stats: EventImportStats): string => {
 }
 
 const printUsage = (): void => {
-  console.log('Usage: npm run import -- <file.jsonl> [--batch-size <number>]')
-  console.log('Example: npm run import -- ./events.jsonl --batch-size 1000')
+  console.log('Usage: nostream import <file.jsonl|file.json> [--batch-size <number>]')
+  console.log('Example: nostream import ./events.jsonl --batch-size 1000')
+  console.log('Example: nostream import ./events.json --batch-size 1000')
+  console.log('Example: nostream import ./events.jsonl.gz --batch-size 1000')
+  console.log('Example: nostream import ./events.jsonl.xz --batch-size 1000')
 }
 
 const parseBatchSize = (value: string): number => {
@@ -45,7 +57,7 @@ const parseBatchSize = (value: string): number => {
   return parsedValue
 }
 
-const parseCliArgs = (args: string[]): CliOptions => {
+export const parseCliArgs = (args: string[]): CliOptions => {
   let batchSize = DEFAULT_BATCH_SIZE
   let filePath: string | undefined
 
@@ -76,7 +88,7 @@ const parseCliArgs = (args: string[]): CliOptions => {
       continue
     }
 
-    if (arg.startsWith('--')) {
+    if (arg.startsWith('-')) {
       throw new Error(`Unknown option: ${arg}`)
     }
 
@@ -88,7 +100,7 @@ const parseCliArgs = (args: string[]): CliOptions => {
   }
 
   if (!filePath) {
-    throw new Error('Missing path to .jsonl file')
+    throw new Error('Missing path to .jsonl or .json file')
   }
 
   return {
@@ -98,12 +110,22 @@ const parseCliArgs = (args: string[]): CliOptions => {
   }
 }
 
-const ensureValidInputFile = (filePath: string): string => {
-  const absolutePath = resolve(process.cwd(), filePath)
+const inferCompressedFormat = (absolutePath: string): ImportFileFormat | undefined => {
+  const normalized = absolutePath.toLowerCase()
 
-  if (extname(absolutePath).toLowerCase() !== '.jsonl') {
-    throw new Error('Input file must have a .jsonl extension')
+  if (normalized.endsWith('.jsonl.gz') || normalized.endsWith('.jsonl.xz')) {
+    return 'jsonl'
   }
+
+  if (normalized.endsWith('.json.gz') || normalized.endsWith('.json.xz')) {
+    return 'json'
+  }
+
+  return undefined
+}
+
+const ensureValidInputFile = async (filePath: string): Promise<InputFileSpec> => {
+  const absolutePath = resolve(process.cwd(), filePath)
 
   if (!fs.existsSync(absolutePath)) {
     throw new Error(`Input file does not exist: ${absolutePath}`)
@@ -114,18 +136,86 @@ const ensureValidInputFile = (filePath: string): string => {
     throw new Error(`Input path is not a file: ${absolutePath}`)
   }
 
-  return absolutePath
+  const compressionFormat = await detectCompressionFormat(absolutePath)
+
+  if (compressionFormat) {
+    const format = inferCompressedFormat(absolutePath)
+    if (!format) {
+      throw new Error('Compressed input filename must end with .jsonl.gz, .jsonl.xz, .json.gz, or .json.xz')
+    }
+
+    return {
+      absolutePath,
+      compressionFormat,
+      format,
+    }
+  }
+
+  const extension = extname(absolutePath).toLowerCase()
+
+  if (extension === '.jsonl') {
+    return {
+      absolutePath,
+      format: 'jsonl',
+    }
+  }
+
+  if (extension === '.json') {
+    return {
+      absolutePath,
+      format: 'json',
+    }
+  }
+
+  throw new Error('Input file must have a .jsonl or .json extension')
 }
 
-const run = async (): Promise<void> => {
-  const options = parseCliArgs(process.argv.slice(2))
+const createImportStream = (inputFile: InputFileSpec): NodeJS.ReadableStream => {
+  const source = fs.createReadStream(inputFile.absolutePath)
+
+  if (!inputFile.compressionFormat) {
+    return source
+  }
+
+  const decompressor = createDecompressionStream(inputFile.compressionFormat)
+
+  source.on('error', (error) => {
+    if (!decompressor.destroyed) {
+      decompressor.destroy(error)
+    }
+  })
+
+  decompressor.on('close', () => {
+    if (!source.destroyed) {
+      source.destroy()
+    }
+  })
+
+  decompressor.on('error', () => {
+    if (!source.destroyed) {
+      source.destroy()
+    }
+  })
+
+  return source.pipe(decompressor)
+}
+
+export const runImportEvents = async (
+  args: string[] = process.argv.slice(2),
+  runOptions: RunImportOptions = {},
+): Promise<number> => {
+  const options = parseCliArgs(args)
 
   if (options.showHelp) {
     printUsage()
-    return
+    return 0
   }
 
-  const absoluteFilePath = ensureValidInputFile(options.filePath)
+  const inputFile = await ensureValidInputFile(options.filePath)
+
+  if (inputFile.compressionFormat && inputFile.format === 'json') {
+    throw new Error('Compressed JSON array import is not supported. Use .json (uncompressed) or .jsonl.gz/.jsonl.xz.')
+  }
 
   const dbClient = getMasterDbClient()
   const eventRepository = new EventRepository(dbClient, dbClient)
@@ -151,11 +241,22 @@ const run = async (): Promise<void> => {
   const startedAt = Date.now()
 
   try {
-    const stats = await importer.importFromJsonl(absoluteFilePath, {
-      batchSize: options.batchSize,
-      onLineError,
-      onProgress,
-    })
+    if (inputFile.compressionFormat) {
+      console.log(`Detected ${inputFile.compressionFormat} compression. Decompressing on-the-fly...`)
+    }
+
+    const stats =
+      inputFile.format === 'json'
+        ? await importer.importFromJsonArray(inputFile.absolutePath, {
+            batchSize: options.batchSize,
+            onLineError,
+            onProgress,
+          })
+        : await importer.importFromReadable(createImportStream(inputFile), {
+            batchSize: options.batchSize,
+            onLineError,
+            onProgress,
+          })
 
     if (suppressedErrors > 0) {
       console.warn(`Suppressed ${formatNumber(suppressedErrors)} additional line errors`)
@@ -163,21 +264,41 @@ const run = async (): Promise<void> => {
 
     const elapsedSeconds = ((Date.now() - startedAt) / 1000).toFixed(2)
 
-    console.log(`Import completed in ${elapsedSeconds}s`)
-    console.log(formatProgress(stats))
+    if (runOptions.json) {
+      console.log(
+        JSON.stringify(
+          {
+            elapsedSeconds: Number(elapsedSeconds),
+            ...stats,
+            suppressedErrors,
+          },
+          null,
+          2,
+        ),
+      )
+    } else {
+      console.log(`Import completed in ${elapsedSeconds}s`)
+      console.log(formatProgress(stats))
+    }
+
+    return 0
   } finally {
     await dbClient.destroy()
   }
 }
 
 if (require.main === module) {
-  run().catch((error: unknown) => {
-    if (error instanceof Error) {
-      console.error(`Import failed: ${error.message}`)
-    } else {
-      console.error('Import failed with unknown error')
-    }
+  runImportEvents()
+    .then((exitCode) => {
+      process.exitCode = exitCode
+    })
+    .catch((error: unknown) => {
+      if (error instanceof Error) {
+        console.error(`Import failed: ${error.message}`)
+      } else {
+        console.error('Import failed with unknown error')
+      }
 
-    process.exit(1)
-  })
+      process.exit(1)
+    })
 }

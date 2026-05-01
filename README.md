@@ -21,11 +21,8 @@
   <a href="https://github.com/cameri/nostream/blob/main/LICENSE">
     <img alt="GitHub license" src="https://img.shields.io/github/license/Cameri/nostream" />
   </a>
-  <a href='https://coveralls.io/github/Cameri/nostream?branch=main'>
-    <img  alt='Coverage Status' src='https://coveralls.io/repos/github/Cameri/nostream/badge.svg?branch=main' />
-  </a>
-  <a href='https://sonarcloud.io/project/overview?id=Cameri_nostr-ts-relay'>
-    <img alt='Sonarcloud quality gate' src='https://sonarcloud.io/api/project_badges/measure?project=Cameri_nostr&metric=alert_status' />
+  <a href='https://coveralls.io/github/cameri/nostream?branch=main'>
+    <img alt='Coverage Status' src='https://coveralls.io/repos/github/cameri/nostream/badge.svg?branch=main' />
   </a>
   <a href='https://github.com/cameri/nostream/actions'>
     <img alt='Build status' src='https://github.com/cameri/nostream/actions/workflows/checks.yml/badge.svg?branch=main&event=push' />
@@ -47,12 +44,14 @@ NIPs with a relay-specific implementation are listed here.
 
 - [x] NIP-01: Basic protocol flow description
 - [x] NIP-02: Contact list and petnames
+- [x] NIP-03: OpenTimestamps Attestations for Events
 - [x] NIP-04: Encrypted Direct Message
+- [x] NIP-05: Mapping Nostr keys to DNS-based internet identifiers
 - [x] NIP-09: Event deletion
 - [x] NIP-11: Relay information document
-- [x] NIP-11a: Relay Information Document Extensions
 - [x] NIP-12: Generic tag queries
 - [x] NIP-13: Proof of Work
+- [x] NIP-14: Subject tag in text events
 - [x] NIP-15: End of Stored Events Notice
 - [x] NIP-16: Event Treatment
 - [x] NIP-20: Command Results
@@ -61,6 +60,10 @@ NIPs with a relay-specific implementation are listed here.
 - [x] NIP-28: Public Chat
 - [x] NIP-33: Parameterized Replaceable Events
 - [x] NIP-40: Expiration Timestamp
+- [x] NIP-44: Encrypted Payloads (Versioned)
+- [x] NIP-45: Event Counts
+- [x] NIP-62: Request to Vanish
+- [x] NIP-65: Relay List Metadata
 
 ## Requirements
 
@@ -95,7 +98,7 @@ Install Docker from their [official guide](https://docs.docker.com/engine/instal
      - Set `payments.enabled` to `true`
      - Set `payments.feeSchedules.admission.enabled` to `true`
      - Set `limits.event.pubkey.minBalance` to the minimum balance in msats required to accept events (i.e. `1000000` to require a balance of `1000` sats)
-   - Choose one of the following payment processors: `zebedee`, `nodeless`, `opennode`, `lnbits`, `lnurl`
+   - Choose one of the following payment processors: `zebedee`, `nodeless`, `opennode`, `lnbits`, `lnurl`, `nwc`
 
 2. [ZEBEDEE](https://zebedee.io)
    - Complete the step "Before you begin"
@@ -110,7 +113,7 @@ Install Docker from their [official guide](https://docs.docker.com/engine/instal
    - On `.nostr/settings.yaml` file make the following changes:
      - `payments.processor` to `zebedee`
      - `paymentsProcessors.zebedee.callbackBaseURL` to match your Nostream URL (e.g. `https://{YOUR_DOMAIN_HERE}/callbacks/zebedee`)
-   - Restart Nostream (`./scripts/stop` followed by `./scripts/start`)
+   - Restart Nostream (`nostream stop` followed by `nostream start`)
    - Read the in-depth guide for more information: [Set Up a Paid Nostr Relay with ZEBEDEE API](https://docs.zebedee.io/docs/guides/nostr-relay)
 
 3. [Nodeless](https://nodeless.io/?ref=587f477f-ba1c-4bd3-8986-8302c98f6731)
@@ -128,7 +131,7 @@ Install Docker from their [official guide](https://docs.docker.com/engine/instal
    - On your `.nostr/settings.yaml` file make the following changes:
      - Set `payments.processor` to `nodeless`
      - Set `paymentsProcessors.nodeless.storeId` to your store ID
-   - Restart Nostream (`./scripts/stop` followed by `./scripts/start`)
+   - Restart Nostream (`nostream stop` followed by `nostream start`)
 
 4. [OpenNode](https://www.opennode.com/)
    - Complete the step "Before you begin"
@@ -143,7 +146,7 @@ Install Docker from their [official guide](https://docs.docker.com/engine/instal
 
    - On your `.nostr/settings.yaml` file make the following changes:
      - Set `payments.processor` to `opennode`
-   - Restart Nostream (`./scripts/stop` followed by `./scripts/start`)
+   - Restart Nostream (`nostream stop` followed by `nostream start`)
 
 5. [LNBITS](https://lnbits.com/)
     - Complete the step "Before you begin"
@@ -160,7 +163,7 @@ Install Docker from their [official guide](https://docs.docker.com/engine/instal
       - Set `payments.processor` to `lnbits`
       - set `lnbits.baseURL` to your LNbits instance URL (e.g. `https://{YOUR_LNBITS_DOMAIN_HERE}/`)
       - Set `paymentsProcessors.lnbits.callbackBaseURL` to match your Nostream URL (e.g. `https://{YOUR_DOMAIN_HERE}/callbacks/lnbits`)
-    - Restart Nostream (`./scripts/stop` followed by `./scripts/start`)
+    - Restart Nostream (`nostream stop` followed by `nostream start`)
 
 6. [Alby](https://getalby.com/) or any LNURL Provider with [LNURL-verify](https://github.com/lnurl/luds/issues/182) support
     - Complete the step "Before you begin"
@@ -168,9 +171,22 @@ Install Docker from their [official guide](https://docs.docker.com/engine/instal
     - On your `.nostr/settings.yaml` file make the following changes:
       - Set `payments.processor` to `lnurl`
       - Set `lnurl.invoiceURL` to your LNURL (e.g. `https://getalby.com/lnurlp/your-username`)
+    - Restart Nostream (`nostream stop` followed by `nostream start`)
+
+7. Nostr Wallet Connect (NIP-47 / NWC)
+    - Complete the step "Before you begin"
+    - Create an app connection in your NWC-compatible wallet and copy the generated NWC URL
+    - Set `NWC_URL` environment variable on your `.env` file
+
+      ```
+      NWC_URL={NOSTR_WALLET_CONNECT_URL}
+      ```
+
+    - On your `.nostr/settings.yaml` file make the following changes:
+      - Set `payments.processor` to `nwc`
     - Restart Nostream (`./scripts/stop` followed by `./scripts/start`)
 
-7. Ensure payments are required for your public key
+8. Ensure payments are required for your public key
    - Visit https://{YOUR-DOMAIN}/
    - You should be presented with a form requesting an admission fee to be paid
    - Fill out the form and take the necessary steps to pay the invoice
@@ -183,6 +199,18 @@ Install Docker from their [official guide](https://docs.docker.com/engine/instal
    - You should get back the few notes you sent earlier
 
 ## Quick Start (Docker Compose)
+
+For full command reference and interactive mode documentation, see [CLI.md](CLI.md).
+Non-interactive CLI usage conventions:
+- exit `0` on success
+- exit `1` on runtime/validation errors
+- exit `2` on usage errors (invalid command/options)
+
+Optional global installation from a source checkout:
+  ```
+  pnpm add -g .
+  nostream --help
+  ```
 
 Install Docker following the [official guide](https://docs.docker.com/engine/install/).
 You may have to uninstall Docker if you installed it using a different guide.
@@ -203,50 +231,90 @@ Copy the output and paste it into an `.env` file:
 
 Start:
   ```
-  ./scripts/start
+  nostream start
   ```
   or
   ```
-  ./scripts/start_with_tor
+  nostream start --tor
   ```
-
-**Windows / WSL2 users:** Docker bind-mounts can cause PostgreSQL permission errors on Windows. Use the dedicated override file instead:
+  or
   ```
-  docker compose -f docker-compose.yml -f docker-compose.windows.yml up --build
+  nostream start --i2p
   ```
-  Or add this to your `.env` file so you don't have to type it every time:
+  or
   ```
-  COMPOSE_FILE=docker-compose.yml:docker-compose.windows.yml
+  RELAY_DOMAIN=relay.example.com CERTBOT_EMAIL=you@example.com nostream start --nginx
   ```
-  > **Note:** If you previously ran Nostream on Linux/Mac and are switching to Windows, your existing data lives at `.nostr/data/` on the host. You'll need to copy it into the Docker named volume manually or it won't be visible to the new setup.
 
 Stop the server with:
   ```
-  ./scripts/stop
+  nostream stop
   ```
 
 Print the Tor hostname:
   ```
-  ./scripts/print_tor_hostname
+  nostream info --tor-hostname
   ```
 
-### Importing events from JSON Lines
+Print I2P hostname(s):
+  ```
+  nostream info --i2p-hostname
+  ```
 
-You can import NIP-01 events from a `.jsonl` file directly into the relay database.
+The old shell wrapper scripts are no longer shipped in `scripts/`.
+Use the unified `nostream` CLI directly instead:
+
+```
+scripts/start                -> nostream start
+scripts/start_with_tor       -> nostream start --tor
+scripts/start_with_i2p       -> nostream start --i2p
+scripts/start_with_nginx     -> nostream start --nginx
+scripts/stop                 -> nostream stop
+scripts/print_tor_hostname   -> nostream info --tor-hostname
+scripts/print_i2p_hostname   -> nostream info --i2p-hostname
+scripts/update               -> nostream update
+scripts/clean                -> nostream clean
+```
+
+### Importing events from JSON Lines or JSON Arrays
+
+You can import NIP-01 events from `.jsonl` (JSON Lines) or `.json` (JSON array) files directly into the relay database.
+
+Compressed `.jsonl` files are also supported and decompressed on-the-fly:
+
+- `.jsonl.gz` (Gzip)
+- `.jsonl.xz` (XZ)
 
 Basic import:
   ```
-  npm run import -- ./events.jsonl
+  nostream import ./events.jsonl
+  ```
+
+Equivalent alias form:
+  ```
+  nostream import --file ./events.jsonl
+  ```
+
+Import from a JSON array file (compatible with `nostream export --format json`):
+  ```
+  nostream import --file ./events.json
+  ```
+
+Import a compressed backup:
+  ```
+  nostream import ./events.jsonl.gz
+  nostream import ./events.jsonl.xz
   ```
 
 Set a custom batch size (default: `1000`):
   ```
-  npm run import -- ./events.jsonl --batch-size 500
+  nostream import ./events.jsonl --batch-size 500
   ```
 
 The importer:
 
 - Processes the file line-by-line to keep memory usage bounded.
+- Streams JSON array items one by one to keep memory usage bounded.
 - Validates NIP-01 schema, event id hash, and Schnorr signature before insertion.
 - Inserts in database transactions per batch.
 - Skips duplicates without failing the whole import.
@@ -276,8 +344,8 @@ You can [install as a systemd service](https://www.swissrouting.com/nostr.html#i
   RestartSec=5
   User=nostr
   WorkingDirectory=/home/nostr/nostream
-  ExecStart=/home/nostr/nostream/scripts/start
-  ExecStop=/home/nostr/nostream/scripts/stop
+  ExecStart=/usr/bin/env bash -lc 'cd /home/nostr/nostream && nostream start'
+  ExecStop=/usr/bin/env bash -lc 'cd /home/nostr/nostream && nostream stop'
 
   [Install]
   WantedBy=multi-user.target
@@ -344,7 +412,7 @@ To fix this, configure Docker daemon DNS in `/etc/docker/daemon.json`.
 4. Retry starting nostream:
 
   ```
-  ./scripts/start
+  nostream start
   ```
 
 Note: avoid `127.0.0.53` in Docker DNS settings because it points to the host's
@@ -412,14 +480,14 @@ Clone repository and enter directory:
 Install dependencies:
 
   ```
-  npm install -g knex
-  npm install
+  corepack enable
+  pnpm install
   ```
 
 Run migrations (at least once and after pulling new changes):
 
   ```
-  NODE_OPTIONS="-r dotenv/config" npm run db:migrate
+  pnpm db:migrate
   ```
 
 Create .nostr folder inside nostream project folder and copy over the settings file:
@@ -432,150 +500,134 @@ Create .nostr folder inside nostream project folder and copy over the settings f
 To start in development mode:
 
   ```
-  npm run dev
+  pnpm dev
   ```
 
 Or, start in production mode:
 
   ```
-  npm run start
+  pnpm start
   ```
 
 To clean up the build, coverage and test reports run:
 
   ```
-  npm run clean
+  pnpm clean
   ```
-## Development Quick Start (Docker Compose)
+## Development & Contributing
 
-Install Docker Desktop following the [official guide](https://docs.docker.com/desktop/).
-You may have to uninstall Docker on your machine if you installed it using a different guide.
+For development environment setup, testing, linting, load testing, and contribution guidelines
+(including the issue fairness policy, husky pre-commit hooks, and changeset workflow), see
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
-Clone repository and enter directory:
-  ```
-  git clone git@github.com:Cameri/nostream.git
-  cd nostream
-  ```
+## Export Events
 
-Start:
-  ```
-  ./scripts/start
-  ```
+Export all stored events to either [JSON Lines](https://jsonlines.org/) (`.jsonl`) or JSON array (`.json`) format. The export streams rows from the database using cursors, so it works safely on relays with millions of events without loading them into memory.
 
-  This will run in the foreground of the terminal until you stop it with Ctrl+C.
+Optional compression is supported for lower storage and transfer costs:
 
-## Tests
+- Gzip via Node's native `zlib`
+- XZ via `lzma-native`
 
-### Unit tests
+```
+nostream export                              # writes to events.jsonl
+nostream export --output backup-2024-01-01.jsonl # custom filename
+nostream export --output backup.jsonl.gz --compress --format=gzip
+nostream export --output backup.jsonl.xz --compress --format=xz
+nostream export --output backup-2024-01-01.jsonl # alias form
+nostream export --output backup-2024-01-01.json --format json # JSON array output
+```
 
-Open a terminal and change to the project's directory:
-  ```
-  cd /path/to/nostream
-  ```
+Flags:
 
-Run unit tests with:
+- `--compress` / `-z`: enable compression.
+- `--format <gzip|gz|xz>`: compression format. If omitted while compression is enabled,
+  format is inferred from file extension (`.gz` / `.xz`) and defaults to `gzip`.
 
-  ```
-  npm run test:unit
-  ```
+After completion, the exporter prints a summary with:
 
-Or, run unit tests in watch mode:
+- Raw bytes generated from JSONL lines
+- Output bytes written to disk
+- Compression delta (smaller/larger)
+- Throughput in events/sec and bytes/sec
 
-  ```
-  npm run test:unit:watch
-  ```
+Optional XZ tuning (environment variables):
 
-To get unit test coverage run:
+- `NOSTREAM_XZ_THREADS`: max worker threads for XZ compression.
+  Defaults to `4` and is automatically capped to available CPU cores minus one.
+- `NOSTREAM_XZ_PRESET`: compression preset from `0` (fastest, larger output)
+  to `9` (slowest, smallest output). Default is `6`.
 
-  ```
-  npm run cover:unit
-  ```
+The script reads the same `DB_*` environment variables used by the relay (see [CONFIGURATION.md](CONFIGURATION.md)).
 
-To see the unit tests report open `.test-reports/unit/index.html` with a browser:
-  ```
-  open .test-reports/unit/index.html
-  ```
+## Benchmark Database Queries
 
-To see the unit tests coverage report open `.coverage/unit/lcov-report/index.html` with a browser:
-  ```
-  open .coverage/unit/lcov-report/index.html
-  ```
+Run the read-only query benchmark to record the planner's choices and timings for the relay's hot-path queries (REQ subscriptions, vanish checks, purge scans, pending-invoice polls):
 
-### Integration tests (Docker Compose)
+```
+pnpm db:benchmark
+pnpm db:benchmark --runs 5 --kind 1 --limit 500
+```
 
-Open a terminal and change to the project's directory:
-  ```
-  cd /path/to/nostream
-  ```
+The benchmark only issues `EXPLAIN (ANALYZE, BUFFERS)` and `SELECT` statements against your configured database — it never writes. It loads `DB_*` variables from `.env` automatically (via `node --env-file-if-exists=.env`), so no extra setup is required beyond the one you already need to run the relay. Use it to confirm the `events_active_pubkey_kind_created_at_idx`, `events_deleted_at_partial_idx`, and `invoices_pending_created_at_idx` indexes are being picked up.
 
-Run integration tests with:
+For a reproducible before/after proof on a throwaway dataset, run:
 
-  ```
-  npm run docker:test:integration
-  ```
+```
+pnpm db:verify-index-impact
+```
 
-And to get integration test coverage run:
+It seeds ~200k synthetic events, drops the hot-path indexes, runs EXPLAIN (ANALYZE, BUFFERS) for each hot query, recreates the indexes, and prints a BEFORE/AFTER table. See the *Database indexes and benchmarking* section of [CONFIGURATION.md](CONFIGURATION.md).
+## Relay Maintenance
 
-  ```
-  npm run docker:cover:integration
-  ```
+Use `nostream dev db:clean` to wipe or prune `events` table data. This also removes
+corresponding data from the derived `event_tags` table when present.
 
-### Integration tests (Standalone)
-
-Open a terminal and change to the project's directory:
-  ```
-  cd /path/to/nostream
-  ```
-
-Set the following environment variables:
+Dry run (no deletion):
 
   ```
-  DB_URI="postgresql://postgres:postgres@localhost:5432/nostr_ts_relay_test"
-
-  or
-
-  DB_HOST=localhost
-  DB_PORT=5432
-  DB_NAME=nostr_ts_relay_test
-  DB_USER=postgres
-  DB_PASSWORD=postgres
-  DB_MIN_POOL_SIZE=1
-  DB_MAX_POOL_SIZE=2
+  nostream dev db:clean --all --dry-run
   ```
 
-Then run the integration tests:
+Full wipe:
 
   ```
-  npm run test:integration
+  nostream dev db:clean --all --force
   ```
 
-To see the integration tests report open `.test-reports/integration/report.html` with a browser:
-  ```
-  open .test-reports/integration/report.html
-  ```
-
-To get the integration test coverage run:
+Delete events older than N days:
 
   ```
-  npm run cover:integration
+  nostream dev db:clean --older-than=30 --force
   ```
 
-To see the integration test coverage report open `.coverage/integration/lcov-report/index.html` with a browser.
+Delete only selected kinds:
 
   ```
-  open .coverage/integration/lcov-report/index.html
+  nostream dev db:clean --kinds=1,7,4 --force
   ```
+
+Delete only selected kinds older than N days:
+
+  ```
+  nostream dev db:clean --older-than=30 --kinds=1,7,4 --force
+  ```
+
+By default, the command asks for explicit confirmation (`Type 'DELETE' to confirm`).
+Use `--force` to skip the prompt.
+
 
 ## Configuration
 
 You can change the default folder by setting the `NOSTR_CONFIG_DIR` environment variable to a different path.
 
-Run nostream using one of the quick-start guides at least once and `nostream/.nostr/settings.json` will be created.
+Run nostream using one of the quick-start guides at least once and `nostream/.nostr/settings.yaml` will be created.
 Any changes made to the settings file will be read on the next start.
 
 Default settings can be found under `resources/default-settings.yaml`. Feel free to copy it to `nostream/.nostr/settings.yaml` if you would like to have a settings file before running the relay first.
 
 See [CONFIGURATION.md](CONFIGURATION.md) for a detailed explanation of each environment variable and setting.
+
 ## Dev Channel
 
 For development discussions, please use the [Nostr Typescript Relay Dev Group](https://t.me/nostream_dev).

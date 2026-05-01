@@ -1,5 +1,10 @@
 import { ContextMetadata, EventId, Pubkey, Tag } from './base'
-import { ContextMetadataKey, EventDeduplicationMetadataKey, EventExpirationTimeMetadataKey, EventKinds } from '../constants/base'
+import {
+  ContextMetadataKey,
+  EventDeduplicationMetadataKey,
+  EventExpirationTimeMetadataKey,
+  EventKinds,
+} from '../constants/base'
 
 export interface BaseEvent {
   id: EventId
@@ -42,6 +47,11 @@ export interface DBEvent {
   first_seen: Date
   deleted_at?: Date
   expires_at?: number
+}
+
+export type RelayListEntry = {
+  url: string
+  marker?: 'read' | 'write'
 }
 
 export interface CanonicalEvent {
