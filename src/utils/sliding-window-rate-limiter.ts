@@ -4,16 +4,7 @@ import { ICacheAdapter } from '../@types/adapters'
 
 const logger = createLogger('sliding-window-rate-limiter')
 
-export class SlidingWindowRateLimiter implements IRateLimiter {
-  public constructor(
-    private readonly cache: ICacheAdapter,
-  ) { }
-
-  public async hit(key: string, step: number, options: IRateLimiterOptions): Promise<boolean> {
-    const timestamp = Date.now()
-    const { period, rate } = options
-
-    const script = `
+const SLIDING_WINDOW_RATE_LIMITER_LUA_SCRIPT = `
       local key = KEYS[1]
       local timestamp = tonumber(ARGV[1])
       local period = tonumber(ARGV[2])
@@ -27,13 +18,16 @@ export class SlidingWindowRateLimiter implements IRateLimiter {
       local entries = redis.call('ZRANGE', key, 0, -1)
       local hits = 0
       for i=1, #entries do
-          local step_str = string.match(entries[i], "^[^:]+:(%d+)")
+          local step_str = string.match(entries[i], "^[^:]+:([^:]+)")
           if step_str then
-              hits = hits + tonumber(step_str)
+              local entry_step = tonumber(step_str)
+              if entry_step then
+                  hits = hits + entry_step
+              end
           end
       end
 
-      if hits >= max_rate then
+      if hits + step > max_rate then
           return 1
       end
 
@@ -49,16 +43,25 @@ export class SlidingWindowRateLimiter implements IRateLimiter {
       redis.call('PEXPIRE', key, period)
 
       return 0
-    `
+`
 
-    const result = await this.cache.eval(script, [key], [
+export class SlidingWindowRateLimiter implements IRateLimiter {
+  public constructor(
+    private readonly cache: ICacheAdapter,
+  ) { }
+
+  public async hit(key: string, step: number, options: IRateLimiterOptions): Promise<boolean> {
+    const timestamp = Date.now()
+    const { period, rate } = options
+
+    const result = await this.cache.eval(SLIDING_WINDOW_RATE_LIMITER_LUA_SCRIPT, [key], [
       timestamp.toString(),
       period.toString(),
       step.toString(),
       rate.toString(),
     ])
 
-    const isRateLimited = result === 1
+    const isRateLimited = result === 1 || result === '1'
 
     logger('hit on %s bucket: is rate limited? %s', key, isRateLimited)
 

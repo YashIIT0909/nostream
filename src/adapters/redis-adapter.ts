@@ -125,10 +125,4 @@ export class RedisAdapter implements ICacheAdapter {
   }
 
 
-  public async evalRaw(script: string, keys: string[], args: string[]): Promise<unknown> {
-    await this.connection
-    logger('eval script with keys %o and args %o', keys, args)
-    return this.client.eval(script, { keys, arguments: args })
-  }
-
 }
