@@ -18,6 +18,7 @@
     17,
     20,
     22,
+    25,
     28,
     33,
     40,
@@ -26,6 +27,7 @@
     65
   ],
   "supportedNipExtensions": [],
+  "supportedMips": [0, 1, 2, 3],
   "main": "src/index.ts",
   "bin": {
     "nostream": "./dist/src/cli/index.js"
@@ -95,7 +97,7 @@
     "docker:cover:integration": "pnpm run docker:integration:run pnpm exec nyc --report-dir .coverage/integration pnpm run test:integration -- -p cover",
     "postdocker:integration:run": "docker compose -f ./test/integration/docker-compose.yml down",
     "prepack": "pnpm run build",
-    "prepare": "husky install || exit 0",
+    "prepare": "test -f .husky/install.mjs && node .husky/install.mjs || true",
     "changeset:version": "changeset version && pnpm install --lockfile-only",
     "changeset:publish": "changeset publish"
   },
